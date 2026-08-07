@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const {
   TALLY_URL,
   SALES_ORDERS_XML,
@@ -10,6 +12,8 @@ const {
   loadLastSnapshot,
   saveSnapshot,
   postJson,
+  postMultipart,
+  PDF_DIR,
   isWithinScheduleWindow,
   getTallySelectedCompany,
   exportVoucherAsPdf,
@@ -23,7 +27,7 @@ const {
 // ============================================================
 // CONFIGURATION
 // ============================================================
-const PUSH_API_URL = 'https://vl6966bh-3000.inc1.devtunnels.ms/api/v1/o2d/so-orders-from-tally';
+const PUSH_API_URL = 'https://vl6966bh-3000.inc1.devtunnels.ms/api/v1/o2d/so-orders-from-tally?pdf-file';
 const TYPE = 'so';
 
 /**
@@ -46,25 +50,33 @@ async function syncAndPushSO(queryDate) {
 
     // 2b. Generate and attach voucher PDFs (using unique caching per GUID)
     const pdfCache = {};
+    let firstPdfPath = null;
+    let firstPdfName = null;
+
     for (const row of soRows) {
       if (row.guid && !pdfCache[row.guid]) {
         console.log(`[SO PDF Export] Generating PDF for Sales Order: ${row.orderno} (${row.guid})...`);
-        const pdfBase64 = await exportVoucherAsPdf(row.guid, selectedCompany.name);
-        if (pdfBase64) {
+        const pdfBase64 = await exportVoucherAsPdf(row.guid, selectedCompany.name, row.orderno);
+
+        const sanitizedName = row.orderno ? row.orderno.replace(/[/\\?%*:|"<>]/g, '_').trim() : row.guid;
+        const pdfFilePath = path.join(PDF_DIR, `${sanitizedName}.pdf`);
+
+        if (pdfBase64 && fs.existsSync(pdfFilePath)) {
           const approxSizeBytes = Math.round(pdfBase64.length * 0.75);
           const sizeKb = (approxSizeBytes / 1024).toFixed(2);
-          console.log(`   ✅ PDF generated: "${row.orderno}.pdf", Size: ${sizeKb} KB (${approxSizeBytes} bytes)`);
+          console.log(`   ✅ PDF generated: "${sanitizedName}.pdf", Size: ${sizeKb} KB (${approxSizeBytes} bytes)`);
+          if (!firstPdfPath) {
+            firstPdfPath = pdfFilePath;
+            firstPdfName = `${sanitizedName}.pdf`;
+          }
         } else {
           console.warn(`   ❌ PDF generation failed for: "${row.orderno}.pdf"`);
         }
-        pdfCache[row.guid] = pdfBase64 || null;
+        pdfCache[row.guid] = pdfBase64 ? true : false;
       }
-      row.voucherPdfBase64 = row.guid ? pdfCache[row.guid] : null;
     }
 
     const result = {
-      // company: selectedCompany.name,
-      // date: displayDate,
       salesOrders: soRows
     };
 
@@ -77,10 +89,10 @@ async function syncAndPushSO(queryDate) {
       return { status: 'unchanged', date: displayDate, data: result };
     }
 
-    console.log(`[Sales Orders Sync] Data changed (or first run) for ${displayDate}. Pushing to API...`);
+    console.log(`[Sales Orders Sync] Data changed (or first run) for ${displayDate}. Pushing multipart/form-data to API...`);
 
-    // 4. Push to API
-    const pushResponse = await postJson(PUSH_API_URL, result);
+    // 4. Push to API as form-data (pdf-file binary + sale_order JSON)
+    const pushResponse = await postMultipart(PUSH_API_URL, firstPdfPath, firstPdfName, soRows);
     console.log(`[Sales Orders API] Status: ${pushResponse.statusCode}`);
 
     if (pushResponse.statusCode >= 200 && pushResponse.statusCode < 300) {

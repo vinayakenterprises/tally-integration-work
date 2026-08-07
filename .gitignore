@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Data & PDF directories
+pdfs/
+backend/tally-sync-state/
+

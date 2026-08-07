@@ -24,6 +24,10 @@ const SCHEDULE_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
 const STATE_DIR = path.join(__dirname, 'tally-sync-state');
 if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
 
+// Where exported PDFs are permanently saved
+const PDF_DIR = path.join(__dirname, '..', 'pdfs');
+if (!fs.existsSync(PDF_DIR)) fs.mkdirSync(PDF_DIR, { recursive: true });
+
 function stateFilePath(type, dateStr) {
   return path.join(STATE_DIR, `last-sync-${type}-${dateStr}.json`);
 }
@@ -617,6 +621,32 @@ function postJson(urlStr, jsonBody) {
   });
 }
 
+/**
+ * Sends a multipart/form-data POST request containing pdf-file binary and sale_order JSON field.
+ */
+async function postMultipart(urlStr, pdfFilePath, fileName, salesOrdersData) {
+  const formData = new FormData();
+
+  if (pdfFilePath && fs.existsSync(pdfFilePath)) {
+    const pdfBuffer = fs.readFileSync(pdfFilePath);
+    const pdfBlob = new Blob([pdfBuffer], { type: 'application/pdf' });
+    formData.append('pdf-file', pdfBlob, fileName || path.basename(pdfFilePath));
+  }
+
+  formData.append('sale_order', JSON.stringify(salesOrdersData));
+
+  const res = await fetch(urlStr, {
+    method: 'POST',
+    body: formData
+  });
+
+  const bodyText = await res.text();
+  return {
+    statusCode: res.status,
+    body: bodyText
+  };
+}
+
 function isWithinScheduleWindow(date = new Date()) {
   const minutesNow = date.getHours() * 60 + date.getMinutes();
   const startMinutes = SCHEDULE_START_HOUR * 60 + SCHEDULE_START_MIN;
@@ -667,9 +697,10 @@ const { execFileSync } = require('child_process');
 
 /**
  * Programmatically exports a specific Tally voucher as a PDF file
- * by querying Tally in HTML format first and rendering to PDF via Microsoft Edge.
+ * by querying Tally in HTML format first, rendering to PDF via Microsoft Edge,
+ * and permanently saving the PDF file in the project `pdfs` directory.
  */
-async function exportVoucherAsPdf(voucherKey, companyName) {
+async function exportVoucherAsPdf(voucherKey, companyName, fileName) {
   const printXml = `
 <ENVELOPE>
   <HEADER>
@@ -695,7 +726,12 @@ async function exportVoucherAsPdf(voucherKey, companyName) {
     const htmlBuffer = await fetchFromTallyWithRetry(printXml);
     
     const tempHtmlPath = path.join(STATE_DIR, `temp-${voucherKey}.html`);
-    const tempPdfPath = path.join(STATE_DIR, `temp-${voucherKey}.pdf`);
+    
+    // Sanitize output PDF filename if provided (e.g. order number SO-2026/08/001 -> SO-2026_08_001.pdf)
+    const sanitizedName = fileName
+      ? fileName.replace(/[/\\?%*:|"<>]/g, '_').trim()
+      : voucherKey;
+    const finalPdfPath = path.join(PDF_DIR, `${sanitizedName}.pdf`);
     
     fs.writeFileSync(tempHtmlPath, htmlBuffer);
 
@@ -704,12 +740,12 @@ async function exportVoucherAsPdf(voucherKey, companyName) {
         "--headless",
         "--no-sandbox",
         "--disable-gpu",
-        `--print-to-pdf=${tempPdfPath}`,
+        `--print-to-pdf=${finalPdfPath}`,
         tempHtmlPath
       ], { stdio: 'ignore' });
       
-      if (fs.existsSync(tempPdfPath)) {
-        const pdfBuffer = fs.readFileSync(tempPdfPath);
+      if (fs.existsSync(finalPdfPath)) {
+        const pdfBuffer = fs.readFileSync(finalPdfPath);
         return pdfBuffer.toString('base64');
       } else {
         console.warn(`[PDF Export Error] PDF was not generated for key: ${voucherKey}`);
@@ -718,7 +754,6 @@ async function exportVoucherAsPdf(voucherKey, companyName) {
     } finally {
       try {
         if (fs.existsSync(tempHtmlPath)) fs.unlinkSync(tempHtmlPath);
-        if (fs.existsSync(tempPdfPath)) fs.unlinkSync(tempPdfPath);
       } catch (e) {
         // Ignore cleanup errors
       }
@@ -748,9 +783,11 @@ module.exports = {
   loadLastSnapshot,
   saveSnapshot,
   postJson,
+  postMultipart,
   isWithinScheduleWindow,
   getTallySelectedCompany,
   exportVoucherAsPdf,
+  PDF_DIR,
   sleep,
   SCHEDULE_INTERVAL_MS,
   SCHEDULE_START_HOUR,
