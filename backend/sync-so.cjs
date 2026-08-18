@@ -1,7 +1,9 @@
 const {
   TALLY_URL,
   SALES_ORDERS_XML,
+  BANK_LEDGERS_XML,
   injectCompanyInXml,
+  parseBankLedgers,
   parseVouchers,
   flattenVouchers,
   fetchFromTallyWithRetry,
@@ -24,7 +26,7 @@ const {
 // ============================================================
 // CONFIGURATION
 // ============================================================
-const PUSH_API_URL = 'https://vl6966bh-3000.inc1.devtunnels.ms/api/v1/o2d/so-orders-from-tally';
+const PUSH_API_URL = 'https://api.mittalu.com/api/v1/o2d/so-orders-from-tally';
 const TYPE = 'so';
 
 /**
@@ -45,12 +47,24 @@ async function syncAndPushSO(queryDate, testSuffix) {
     const soXml = await fetchFromTallyWithRetry(soPayload);
     const vouchers = parseVouchers(soXml);
 
+    // 3. Fetch Bank Details
+    let bankDetails = null;
+    try {
+      const bankXml = await fetchFromTallyWithRetry(BANK_LEDGERS_XML);
+      const banks = parseBankLedgers(bankXml);
+      if (banks && banks.length > 0) {
+        bankDetails = banks[0];
+      }
+    } catch (err) {
+      console.warn(`[SO PDF Export] Could not fetch bank ledgers: ${err.message}`);
+    }
+
     const pdfMap = {};
 
     // Generate PDFs for all Sales Orders locally
     for (const v of vouchers) {
       console.log(`[SO PDF Export] Generating PDF for Sales Order: ${v.vouchernumber} (${v.guid})...`);
-      const pdfPath = await exportSalesOrderAsPdf(v, selectedCompany.name);
+      const pdfPath = await exportSalesOrderAsPdf(v, selectedCompany, bankDetails);
       if (pdfPath) {
         const sanitizedOrderNo = (v.vouchernumber || v.guid).replace(/[^a-zA-Z0-9-_]/g, '_').trim();
         const filename = `${sanitizedOrderNo}.pdf`;
@@ -111,11 +125,11 @@ async function syncAndPushSO(queryDate, testSuffix) {
       if (row.pdf && pdfMap[row.pdf]) {
         singlePdfMap[row.pdf] = pdfMap[row.pdf];
       }
-      
+
       console.log(`[Sales Orders Sync] Pushing Order: ${row.orderno} to API...`);
       const pushResponse = await postMultipartData(PUSH_API_URL, singleOrderPayload, singlePdfMap);
       console.log(`[Sales Orders API] Order ${row.orderno} Status: ${pushResponse.statusCode}`);
-      
+
       if (pushResponse.statusCode < 200 || pushResponse.statusCode >= 300) {
         console.error(`[Sales Orders API] Non-success response for ${row.orderno}: ${pushResponse.statusCode} - ${pushResponse.body}`);
         allSuccess = false;

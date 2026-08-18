@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Sales Order</title>
+  <style>
+    /* {{cssContent}} */
+  </style>
+</head>
+
+<body>
+  <div class="doc-title">SALES ORDER</div>
+
+  <div class="frame">
+    <table class="hdr">
+      <tr>
+        <td rowspan="3" class="seller-cell">
+          <div class="seller-name">{{sellerName}}</div>
+          <div>{{sellerAddress1}}</div>
+          <div>{{sellerAddress2}}</div>
+          <div>{{sellerMsme}}</div>
+          <div><span style="font-weight:normal;">GSTIN/UIN:</span> {{sellerGstin}}</div>
+          <div>State Name : {{sellerState}}</div>
+          <div>E-Mail : {{sellerEmail}}</div>
+        </td>
+        <td class="col2">
+          <div class="lbl">Voucher No.</div>
+          <div class="val">{{voucherNo}}</div>
+        </td>
+        <td class="col3">
+          <div class="lbl">Dated</div>
+          <div class="val">{{voucherDate}}</div>
+        </td>
+      </tr>
+      <tr>
+        <td class="col2">
+          <div class="lbl">Other References</div>
+          <div class="val">&nbsp;</div>
+        </td>
+        <td class="col3">
+          <div class="lbl">Mode/Terms of Payment</div>
+          <div class="val">{{paymentTerms}}</div>
+        </td>
+      </tr>
+      <tr>
+        <td class="col2">
+          <div class="lbl">Buyer's Ref./Order No.</div>
+          <div class="val">{{orderNo}}</div>
+        </td>
+        <td class="col3">
+          <div class="lbl">Dispatch Document No.</div>
+          <div class="val">{{shipDocumentNo}}</div>
+        </td>
+      </tr>
+      <tr>
+        <td rowspan="2" class="consignee-cell">
+          <div class="party-lbl">Consignee (Ship to)</div>
+          <div class="party-name">{{cName}}</div>
+          <div class="party-addr">{{cAddr1}}</div>
+          <div class="party-addr">{{cAddr2}}</div>
+          <table class="party-meta">
+            <tr>
+              <td class="k">GSTIN/UIN</td>
+              <td>: {{cGstin}}</td>
+            </tr>
+            <tr>
+              <td class="k">State Name</td>
+              <td>: {{cStateStr}}</td>
+            </tr>
+          </table>
+          <br><br>
+        </td>
+        <td class="col2">
+          <div class="lbl">Dispatched through</div>
+          <div class="val">{{shippedBy}}</div>
+        </td>
+        <td class="col3">
+          <div class="lbl">Destination</div>
+          <div class="val">{{destination}}</div>
+        </td>
+      </tr>
+      <tr>
+        <td class="col2">
+          <div class="lbl">Motor Vehicle No.</div>
+          <div class="val">{{motorVehicle}}</div>
+        </td>
+        <td class="col3">
+          &nbsp;
+        </td>
+      </tr>
+      <tr>
+        <td class="buyer-cell" rowspan="2" style="vertical-align: top; padding: 0; border-bottom: 1px solid #000;">
+          <div style="padding: 5px;">
+            <div class="party-lbl">Buyer (Bill to)</div>
+            <div class="party-name">{{bName}}</div>
+            <div class="party-addr">{{bAddr1}}</div>
+            <div class="party-addr">{{bAddr2}}</div>
+            <table class="party-meta">
+              <tr>
+                <td class="k">GSTIN/UIN</td>
+                <td>: {{bGstin}}</td>
+              </tr>
+              <tr>
+                <td class="k">State Name</td>
+                <td>: {{bStateStr}}</td>
+              </tr>
+            </table>
+            <br><br>
+          </div>
+        </td>
+        <td colspan="2" class="tod-cell" rowspan="2" style="vertical-align: top; border-bottom: 1px solid #000;">
+          <div class="tod-lbl">Terms of Delivery</div>
+          <div class="b">After 7 days, 18% interest will be charged</div>
+          <div class="b">Complaints: Complaints or Issues lodged within 4 days of receiving the material will be
+            considered only<br><br></div>
+        </td>
+      </tr>
+    </table>
+
+    <table class="items">
+      <colgroup>
+        <col class="c-sl">
+        <col class="c-desc">
+        <col class="c-hsn">
+        <col class="c-gst">
+        <col class="c-due">
+        <col class="c-qty">
+        <col class="c-rate">
+        <col class="c-per">
+        <col class="c-amt">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>SI<br>No.</th>
+          <th>Description of Goods</th>
+          <th>HSN/SAC</th>
+          <th>GST<br>Rate</th>
+          <th>Due on</th>
+          <th>Quantity</th>
+          <th>Rate</th>
+          <th>per</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{tableRowsHtml}}
+      </tbody>
+    </table>
+
+    <table class="foot">
+      <tr>
+        <td colspan="2" class="words-cell">
+          <span class="words-hdr">Amount Chargeable (in words)</span>
+          <span class="eoe">E. &amp; O.E</span>
+          <span class="words-val">INR {{totalAmtInWords}}</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="pan-decl-cell">
+          <div class="pan-row"><span>Company's PAN</span><span style="font-weight: bold;">: {{sellerPan}}</span></div>
+          <div class="decl-title">Declaration</div>
+          <div class="decl-text">We declare that this invoice shows the actual price of the goods described and that all
+            particulars are true and correct.</div>
+        </td>
+        <td class="bank-sig-cell">
+          <div class="bank-box">
+            <div class="bank-title">Company's Bank Details</div>
+            <table class="bank-meta">
+              <tr>
+                <td class="k">A/c Holder's Name</td>
+                <td>: <span class="v">{{bankAccountName}}</span></td>
+              </tr>
+              <tr>
+                <td class="k">Bank Name</td>
+                <td>: <span class="v" style="white-space: nowrap;">{{bankName}}</span></td>
+              </tr>
+              <tr>
+                <td class="k">A/c No.</td>
+                <td>: <span class="v">{{bankAccountNo}}</span></td>
+              </tr>
+              <tr>
+                <td class="k">Branch &amp; IFS Code</td>
+                <td>: <span class="v">{{bankIfsc}}</span></td>
+              </tr>
+              <tr>
+                <td class="k">SWIFT Code</td>
+                <td>: <span class="v">{{bankSwift}}</span></td>
+              </tr>
+            </table>
+          </div>
+          <div class="sig-box">
+            <div class="sig-for">for {{sigCompanyName}}</div>
+            <div class="sig-auth">Authorised Signatory</div>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="bottom-tag">This is a Computer Generated Document</div>
+</body>
+
+</html>

@@ -57,7 +57,44 @@ const GET_COMPANIES_XML = `
         <FETCH>Name</FETCH>
         <FETCH>StartingFrom</FETCH>
         <FETCH>EndingAt</FETCH>
+        <FETCH>Address</FETCH>
+        <FETCH>StateName</FETCH>
+        <FETCH>PinCode</FETCH>
+        <FETCH>Telephone</FETCH>
+        <FETCH>Email</FETCH>
+        <FETCH>IncomeTaxNumber</FETCH>
+        <FETCH>CompanyGSTIN</FETCH>
       </FETCHLIST>
+    </DESC>
+  </BODY>
+</ENVELOPE>
+`;
+
+const BANK_LEDGERS_XML = `
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>COLLECTION</TYPE>
+    <ID>BankLedgerCollection</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME="BankLedgerCollection" ISINITIALIZE="Yes">
+            <TYPE>Ledger</TYPE>
+            <FETCH>Name, BankDetails</FETCH>
+            <FILTER>IsBank</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE="Formulae" NAME="IsBank">
+            $IsBankLedger OR $IsBankOD
+          </SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
     </DESC>
   </BODY>
 </ENVELOPE>
@@ -92,16 +129,24 @@ const SALES_ORDERS_XML = `
             <FETCH>CONSIGNEEMAILINGNAME</FETCH>
             <FETCH>CONSIGNEEADDRESS</FETCH>
             <FETCH>CONSIGNEEGSTIN</FETCH>
+            <FETCH>PARTYSTATENAME</FETCH>
+            <FETCH>CONSIGNEESTATENAME</FETCH>
             <FETCH>BASICSHIPPEDBY</FETCH>
             <FETCH>BASICPLACEBEFOREDELIVERY</FETCH>
             <FETCH>BASICPAYMENTTERMS</FETCH>
+            <FETCH>TERMSOFDELIVERY</FETCH>
+            <FETCH>BASICMOTORVEHICLENO</FETCH>
             <FETCH>BASICSHIPDOCUMENTNO</FETCH>
             <FETCH>ALLINVENTORYENTRIES.STOCKITEMNAME</FETCH>
             <FETCH>ALLINVENTORYENTRIES.BILLEDQTY</FETCH>
+            <FETCH>ALLINVENTORYENTRIES.ACTUALUOM</FETCH>
             <FETCH>ALLINVENTORYENTRIES.RATE</FETCH>
+            <FETCH>ALLINVENTORYENTRIES.DISCOUNT</FETCH>
             <FETCH>ALLINVENTORYENTRIES.AMOUNT</FETCH>
             <FETCH>ALLINVENTORYENTRIES.BASICUSERDESCRIPTION</FETCH>
             <FETCH>ALLINVENTORYENTRIES.ADDITIONALDESCRIPTION</FETCH>
+            <FETCH>ALLINVENTORYENTRIES.HSNCODE</FETCH>
+            <FETCH>ALLINVENTORYENTRIES.DUEON</FETCH>
             <FETCH>ALLLEDGERENTRIES.LEDGERNAME</FETCH>
             <FETCH>ALLLEDGERENTRIES.AMOUNT</FETCH>
             <FETCH>ALLLEDGERENTRIES.ISDEEMEDPOSITIVE</FETCH>
@@ -181,19 +226,63 @@ function parseCompanies(xmlText) {
   let match;
   while ((match = compRegex.exec(xmlText)) !== null) {
     const compContent = match[1];
-    const nameMatch = compContent.match(/<NAME\b[^>]*>(.*?)<\/NAME>/i);
-    const startingMatch = compContent.match(/<STARTINGFROM\b[^>]*>(.*?)<\/STARTINGFROM>/i);
-    const endingMatch = compContent.match(/<ENDINGAT\b[^>]*>(.*?)<\/ENDINGAT>/i);
 
-    const name = nameMatch ? nameMatch[1].trim() : '';
-    const startingfrom = startingMatch ? startingMatch[1].trim() : '';
-    const endingat = endingMatch ? endingMatch[1].trim() : '';
+    const extract = (tag) => {
+      const reg = new RegExp(`<${tag}\\b[^>]*>(.*?)<\\/${tag}>`, 'is');
+      const m = compContent.match(reg);
+      return m ? m[1].replace(/&#4;|<[^>]+>/g, '\n').trim() : '';
+    };
+
+    const name = extract('NAME');
+    const startingfrom = extract('STARTINGFROM');
+    const endingat = extract('ENDINGAT');
+
+    // Some tags can be multiple like Address, so we grab all inner text
+    const rawAddress = extract('ADDRESS');
+    const address = rawAddress ? rawAddress.split('\n').map(s => s.trim()).filter(Boolean).join(', ') : '';
+
+    const statename = extract('STATENAME');
+    const pincode = extract('PINCODE');
+    const telephone = extract('TELEPHONE');
+    const email = extract('EMAIL');
+    const pan = extract('INCOMETAXNUMBER');
+    const gstin = extract('COMPANYGSTIN');
 
     if (name) {
-      companies.push({ name, startingfrom, endingat });
+      companies.push({
+        name, startingfrom, endingat,
+        address, statename, pincode, telephone, email, pan, gstin
+      });
     }
   }
   return companies;
+}
+
+function parseBankLedgers(xmlText) {
+  const banks = [];
+  const ledRegex = /<LEDGER\b[^>]*>(.*?)<\/LEDGER>/gis;
+  let match;
+  while ((match = ledRegex.exec(xmlText)) !== null) {
+    const ledContent = match[1];
+
+    const extract = (tag) => {
+      const reg = new RegExp(`<${tag}\\b[^>]*>(.*?)<\\/${tag}>`, 'is');
+      const m = ledContent.match(reg);
+      return m ? m[1].replace(/&#4;|<[^>]+>/g, '\n').trim() : '';
+    };
+
+    const name = extract('NAME');
+    const accountName = extract('FAVOURINGNAME') || extract('ACCOUNTHOLDERNAME');
+    const accountNo = extract('ACCOUNTNUMBER') || extract('BANKACCOUNTNUMBER');
+    const ifsc = extract('IFSCODE');
+    const swift = extract('SWIFTCODE');
+    const bankName = extract('BANKNAME');
+
+    if (name) {
+      banks.push({ name, accountName, accountNo, ifsc, swift, bankName });
+    }
+  }
+  return banks;
 }
 
 function parseVouchers(xmlText) {
@@ -830,7 +919,8 @@ function getCompanyFYSuffix(dateStr) {
   return `-(${prevShort})-(${currentShort})`;
 }
 
-async function exportSalesOrderAsPdf(voucher, companyName) {
+async function exportSalesOrderAsPdf(voucher, companyObj, bankObj) {
+  const companyName = typeof companyObj === 'string' ? companyObj : (companyObj?.name || 'UNKNOWN');
 
   const fySuffix = getCompanyFYSuffix(voucher.date);
 
@@ -838,13 +928,16 @@ async function exportSalesOrderAsPdf(voucher, companyName) {
   if (companyName.toUpperCase().includes('VINAYAK')) {
     sellerName = 'VINAYAK ENTERPRISES' + fySuffix;
   }
-  const sellerAddress1 = 'PLOTNO. 7 & 8, NEW MANDOLI INDUSTRIAL';
-  const sellerAddress2 = 'AREA, DELHI-110093';
-  const sellerMsme = 'MSME- UDYAM-DL-02-0021351';
-  const sellerGstin = '07AAIPM1107G1Z3';
-  const sellerState = 'Delhi, Code : 07';
-  const sellerEmail = 'accounts@vinayak-enterprises.com';
-  const sellerPan = 'AAIPM1107G';
+
+  // Use companyObj details if available, else fallback
+  const sellerAddress1 = companyObj?.address ? companyObj.address : 'PLOTNO. 7 & 8, NEW MANDOLI INDUSTRIAL';
+  const sellerAddress2 = companyObj?.address ? '' : 'AREA, DELHI-110093';
+  const sellerMsme = 'MSME- UDYAM-DL-02-0021351'; // usually static for a company, could keep hardcoded or add to Tally if needed
+  const sellerGstin = companyObj?.gstin || '07AAIPM1107G1Z3';
+  const cStateCode = (companyObj?.gstin && companyObj.gstin.length > 1) ? companyObj.gstin.substring(0, 2) : '07';
+  const sellerState = companyObj?.statename ? `${companyObj.statename}, Code : ${cStateCode}` : 'Delhi, Code : 07';
+  const sellerEmail = companyObj?.email || 'accounts@vinayak-enterprises.com';
+  const sellerPan = companyObj?.pan || 'AAIPM1107G';
 
   const bName = voucher.buyername || voucher.partyledgername || 'N/A';
   const bAddrLines = (voucher.buyeraddress && voucher.buyeraddress.length > 0) ? voucher.buyeraddress : (voucher.ledgeraddress || []);
@@ -905,26 +998,28 @@ async function exportSalesOrderAsPdf(voucher, companyName) {
     totalAmtVal += amountVal;
 
     const amountStr = formatIndianNumber(amountVal.toFixed(2));
-    const hsn = item.hsncode || '';
+    const hsn = item.hsncode || item.basicuserdescription || '';
+    const dueOn = item.dueon ? formatTallyDate(item.dueon) : formatTallyDate(voucher.date);
+    const discount = item.discount ? item.discount + '%' : '';
 
     const parts = qty.trim().split(' ');
     const numStr = parts[0] || '0';
-    const unitStr = parts.slice(1).join(' ') || 'KGS';
+    const parsedUnit = item.actualuom || parts.slice(1).join(' ') || 'KGS';
 
     totalQtyVal += parseFloat(numStr.replace(/,/g, ''));
-    qtyUnit = unitStr;
+    qtyUnit = parsedUnit;
     const qtyStr = qty;
 
     tableRowsHtml += `
       <tr>
         <td class="c-sl">${slNo}</td>
-        <td class="c-desc"><div class="item-name">${esc(name)}</div></td>
+        <td class="c-desc"><div class="item-name">${esc(name)}</div><div class="discount">${esc(discount)}</div></td>
         <td class="c-hsn">${esc(hsn)}</td>
         <td class="c-gst">${gstRateStr}</td>
-        <td class="c-due"><span class="due-date">${formatTallyDate(voucher.date)}</span></td>
+        <td class="c-due"><span class="due-date">${dueOn}</span></td>
         <td class="c-qty">${esc(qtyStr)}</td>
         <td class="c-rate">${formatIndianNumber(rate)}</td>
-        <td class="c-per">${esc(unitStr)}</td>
+        <td class="c-per">${esc(parsedUnit)}</td>
         <td class="c-amt">${amountStr}</td>
       </tr>
     `;
@@ -981,166 +1076,66 @@ async function exportSalesOrderAsPdf(voucher, companyName) {
   `;
 
   const voucherNo = (voucher.vouchernumber || voucher.voucherNo || '').replace(/_/g, '/');
-  const orderNo = (voucher.shipdocno || voucher.orderNo || voucher.vouchernumber || '').replace(/_/g, '/');
-  const paymentTerms = voucher.paymentterms || voucher.paymentTerms || '7 Days';
-  const shippedBy = voucher.shippedby || voucher.shippedBy || 'By Road';
+  const orderNo = (voucher.basicshipdocumentno || voucher.shipdocno || voucher.vouchernumber || '').replace(/_/g, '/');
+  const paymentTerms = voucher.basicpaymentterms || voucher.paymentterms || '7 Days';
+  const shippedBy = voucher.basicshippedby || voucher.shippedby || 'By Road';
+  const destination = voucher.basicplacebeforedelivery || '';
+  const motorVehicle = voucher.basicmotorvehicleno || '';
+  const deliveryTerms = voucher.termsofdelivery || '';
+  const partyState = voucher.partystatename || '';
+  const cState = voucher.consigneestatename || partyState || '';
   const voucherDate = formatTallyDate(voucher.date);
 
   const cssPath = path.join(__dirname, 'css', 'sales_order.css');
   const cssContent = fs.readFileSync(cssPath, 'utf8');
+  const htmlTemplatePath = path.join(__dirname, 'html', 'sales_order.html');
+  let htmlContent = fs.readFileSync(htmlTemplatePath, 'utf8');
 
-  const htmlContent = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Sales Order</title>
-<style>
-${cssContent}
-</style>
-</head>
-<body>
-  <div class="doc-title">SALES ORDER</div>
+  const templateVars = {
+    cssContent,
+    sellerName: esc(sellerName),
+    sellerAddress1: esc(sellerAddress1),
+    sellerAddress2: esc(sellerAddress2),
+    sellerMsme: esc(sellerMsme),
+    sellerGstin: esc(sellerGstin),
+    sellerState: esc(sellerState),
+    sellerEmail: esc(sellerEmail),
+    voucherNo: esc(voucherNo),
+    voucherDate,
+    paymentTerms: esc(paymentTerms),
+    orderNo: esc(orderNo),
+    shipDocumentNo: esc(voucher.basicshipdocumentno || ''),
+    cName: esc(cName),
+    cAddr1: esc(cAddr1),
+    cAddr2: esc(cAddr2),
+    cGstin: esc(cGstin),
+    cStateStr: cStateStr || esc(voucher.consigneestatename || ''),
+    shippedBy: esc(shippedBy),
+    destination: esc(destination),
+    motorVehicle: esc(motorVehicle),
+    bName: esc(bName),
+    bAddr1: esc(bAddr1),
+    bAddr2: esc(bAddr2),
+    bGstin: esc(bGstin),
+    bStateStr: bStateStr || esc(voucher.partystatename || ''),
+    tableRowsHtml,
+    totalAmtInWords: totalAmtInWords.replace(/(Thousand[^ ]*) /, '$1<br>'),
+    sellerPan: esc(sellerPan),
+    bankAccountName: esc(bankObj?.accountName || companyName.split('-')[0].trim()),
+    bankName: esc(bankObj?.bankName || bankObj?.name || 'OD AXIS BANK'),
+    bankAccountNo: esc(bankObj?.accountNo || '922030000492649'),
+    bankIfsc: esc(bankObj?.ifsc || 'UTIB0003058'),
+    bankSwift: esc(bankObj?.swift || 'AXISINBB04'),
+    sigCompanyName: esc(companyObj?.name || sellerName)
+  };
 
-  <div class="frame">
-    <table class="hdr">
-      <tr>
-        <td rowspan="3" class="seller-cell">
-          <div class="seller-name">${esc(sellerName)}</div>
-          <div>${esc(sellerAddress1)}</div>
-          <div>${esc(sellerAddress2)}</div>
-          <div>${esc(sellerMsme)}</div>
-          <div><span style="font-weight:normal;">GSTIN/UIN:</span> ${esc(sellerGstin)}</div>
-          <div>State Name :  ${esc(sellerState)}</div>
-          <div>E-Mail : ${esc(sellerEmail)}</div>
-        </td>
-        <td class="col2">
-          <div class="lbl">Voucher No.</div>
-          <div class="val">${esc(voucherNo)}</div>
-        </td>
-        <td class="col3">
-          <div class="lbl">Dated</div>
-          <div class="val">${voucherDate}</div>
-        </td>
-      </tr>
-      <tr>
-        <td class="col2">&nbsp;</td>
-        <td class="col3">
-          <div class="lbl">Mode/Terms of Payment</div>
-          <div class="val">${esc(paymentTerms)}</div>
-        </td>
-      </tr>
-      <tr>
-        <td class="col2">
-          <div class="lbl">Buyer's Ref./Order No.</div>
-          <div class="val">${esc(orderNo)}</div>
-        </td>
-        <td class="col3">
-          <div class="lbl">Other References</div>
-          <div class="val">&nbsp;</div>
-        </td>
-      </tr>
-      <tr>
-        <td rowspan="2" class="consignee-cell">
-          <div class="party-lbl">Consignee (Ship to)</div>
-          <div class="party-name">${esc(cName)}</div>
-          <div class="party-addr">${esc(cAddr1)}</div>
-          <div class="party-addr">${esc(cAddr2)}</div>
-          <table class="party-meta">
-            <tr><td class="k">GSTIN/UIN</td><td>: ${esc(cGstin)}</td></tr>
-            <tr><td class="k">State Name</td><td>: ${cStateStr}<br><br><br></td></tr>
-          </table>
-        </td>
-        <td class="col2">
-          <div class="lbl">Dispatched through</div>
-          <div class="val">${esc(shippedBy)}</div>
-        </td>
-        <td class="col3">
-          <div class="lbl">Destination</div>
-          <div class="val">&nbsp;</div>
-        </td>
-      </tr>
-      <tr>
-        <td colspan="2" class="tod-cell">
-          <div class="tod-lbl">Terms of Delivery</div>
-          <div class="b">After 7 days, 18% interest will be charged</div>
-          <div class="b">Complaints: Complaints or Issues lodged within 4 days of receiving the material will be considered only</div>
-        </td>
-      </tr>
-      <tr>
-        <td class="buyer-cell">
-          <div class="party-lbl">Buyer (Bill to)</div>
-          <div class="party-name">${esc(bName)}</div>
-          <div class="party-addr">${esc(bAddr1)}</div>
-          <div class="party-addr">${esc(bAddr2)}</div>
-          <table class="party-meta">
-            <tr><td class="k">GSTIN/UIN</td><td>: ${esc(bGstin)}</td></tr>
-            <tr><td class="k">State Name</td><td>: ${bStateStr}<br><br><br></td></tr>
-          </table>
-        </td>
-        <td colspan="2" style="border-bottom:1px solid #000;"></td>
-      </tr>
-    </table>
+  // Remove CSS comment wrapper used to bypass HTML formatter
+  htmlContent = htmlContent.replace(/\/\*\s*\{\{cssContent\}\}\s*\*\//g, '{{cssContent}}');
 
-    <table class="items">
-      <colgroup>
-        <col class="c-sl"><col class="c-desc"><col class="c-hsn"><col class="c-gst">
-        <col class="c-due"><col class="c-qty"><col class="c-rate"><col class="c-per"><col class="c-amt">
-      </colgroup>
-      <thead>
-        <tr>
-          <th>SI<br>No.</th>
-          <th>Description of Goods</th>
-          <th>HSN/SAC</th>
-          <th>GST<br>Rate</th>
-          <th>Due on</th>
-          <th>Quantity</th>
-          <th>Rate</th>
-          <th>per</th>
-          <th>Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${tableRowsHtml}
-      </tbody>
-    </table>
+  htmlContent = htmlContent.replace(/\{\{(.*?)\}\}/g, (match, p1) => {
+    return templateVars[p1] !== undefined ? templateVars[p1] : '';
+  });
 
-    <table class="foot">
-      <tr>
-        <td colspan="2" class="words-cell">
-          <span class="words-hdr">Amount Chargeable (in words)</span>
-          <span class="eoe">E. &amp; O.E</span>
-          <span class="words-val">INR ${totalAmtInWords.replace(/(Thousand[^ ]*) /, '$1<br>')}</span>
-        </td>
-      </tr>
-      <tr>
-        <td class="pan-decl-cell">
-          <div class="pan-row"><span>Company's PAN</span><span style="font-weight: bold;">: ${esc(sellerPan)}</span></div>
-          <div class="decl-title">Declaration</div>
-          <div class="decl-text">We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</div>
-        </td>
-        <td class="bank-sig-cell">
-          <div class="bank-box">
-            <div class="bank-title">Company's Bank Details</div>
-            <table class="bank-meta">
-              <tr><td class="k">A/c Holder's Name</td><td>: <span class="v">${esc(sellerName.split('-')[0].trim())}</span></td></tr>
-              <tr><td class="k">Bank Name</td><td>: <span class="v" style="white-space: nowrap;">OD AXIS BANK</span></td></tr>
-              <tr><td class="k">A/c No.</td><td>: <span class="v">922030000492649</span></td></tr>
-              <tr><td class="k">Branch &amp; IFS Code</td><td>: <span class="v">UTIB0001261</span></td></tr>
-              <tr><td class="k">SWIFT Code</td><td>: </td></tr>
-            </table>
-          </div>
-          <div class="sig-box">
-            <div class="sig-for">for ${esc(sellerName)}</div>
-            <div class="sig-auth">Authorised Signatory</div>
-          </div>
-        </td>
-      </tr>
-    </table>
-  </div>
-
-  <div class="bottom-tag">This is a Computer Generated Document</div>
-</body>
-</html>`;
   const tempHtmlPath = path.join(STATE_DIR, 'temp-' + voucher.guid + '.html');
   fs.writeFileSync(tempHtmlPath, htmlContent, 'utf8');
 
@@ -1176,9 +1171,11 @@ module.exports = {
   TALLY_URL,
   tallyUrlObj,
   GET_COMPANIES_XML,
+  BANK_LEDGERS_XML,
   SALES_ORDERS_XML,
   injectCompanyInXml,
   parseCompanies,
+  parseBankLedgers,
   parseVouchers,
   flattenVouchers,
   getCurrentFinancialYearStrings,
