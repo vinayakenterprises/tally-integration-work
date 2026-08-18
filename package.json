@@ -1,0 +1,16 @@
+{
+  "name": "tally-connector",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node backend/server.cjs"
+  },
+  "dependencies": {
+    "axios": "^1.19.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "form-data": "^4.0.6",
+    "pdfkit": "^0.19.1",
+    "pngjs": "^7.0.0"
+  }
+}

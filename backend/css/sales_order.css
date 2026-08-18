@@ -1,0 +1,157 @@
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body {
+    font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+    font-size: 8.3pt;
+    line-height: 1.22;
+    color: #000;
+    background: #fff;
+  }
+  body { padding: 7.7mm 32.2mm 2mm 12.7mm; width: 100%; }
+
+  .doc-title {
+    text-align: center;
+    font-size: 12.5pt;
+    font-weight: bold;
+    letter-spacing: 0.3px;
+    padding-bottom: 5.3mm;
+  }
+
+  .frame { border: 1px solid #000; border-bottom: none; }
+
+  table.hdr { width: 100%; border-collapse: collapse; }
+  table.hdr td { border: 0 solid #000; padding: 2px 4px; vertical-align: top; font-size: 8.3pt; }
+
+  table.hdr td.seller-cell { width: 47.7%; border-right: 1px solid #000; border-bottom: 1px solid #000; }
+  .seller-name { font-weight: bold; font-size: 10.3pt; margin-bottom: 0px; }
+  .seller-cell div { line-height: 1.15; }
+
+  table.hdr td.col2 { width: 26.15%; border-right: 1px solid #000; border-bottom: 1px solid #000; }
+  table.hdr td.col3 { width: 26.15%; border-bottom: 1px solid #000; }
+  .lbl { color: #1a1a1a; font-size: 7.7pt; }
+  .val { font-weight: bold; font-size: 8.6pt; margin-top: 1px; }
+
+  table.hdr td.consignee-cell, table.hdr td.buyer-cell { width: 47.7%; border-right: 1px solid #000; border-bottom: 1px solid #000; }
+  .party-lbl { font-size: 7.7pt; color: #1a1a1a; margin-bottom: 1px; }
+  .party-name { font-weight: bold; font-size: 9.6pt; margin-bottom: 0px; }
+  .party-addr { line-height: 1.15; }
+  .party-meta { width: 100%; margin-top: 1px; font-size: 8pt; border-collapse: collapse; }
+  .party-meta td { border: none; padding: 0 !important; white-space: nowrap; }
+  .party-meta .k { width: 65px; font-weight: normal; }
+
+  table.hdr td.tod-cell { font-size: 8pt; line-height: 1.25; }
+  .tod-lbl { color: #1a1a1a; font-size: 7.7pt; margin-bottom: 1px; }
+  .tod-cell div.b { font-weight: bold; }
+
+  table.items { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  table.items th {
+    border-bottom: 1px solid #000;
+    padding: 3px 3px 4px;
+    font-size: 8.2pt;
+    font-weight: normal;
+    text-align: center;
+    vertical-align: bottom;
+  }
+  table.items td { padding: 4px 4px 2px; font-size: 8.3pt; vertical-align: top; }
+  table.items th, table.items td { border-right: 1px solid #000; }
+  table.items th:last-child, table.items td:last-child { border-right: none; }
+  .items tr:nth-child(2) td { padding-top: 50px; }
+  .items tbody tr:first-child td { padding-top: 20px; }
+
+
+  .c-sl { width: 2.77%; text-align: center; }
+  .c-desc { width: 24.15%; }
+  .c-hsn { width: 11.31%; text-align: center; }
+  .c-gst { width: 7.46%; text-align: center; }
+  .c-due { width: 10.08%; text-align: center; }
+  .c-qty { width: 11.31%; text-align: right; font-weight: bold; }
+  .c-rate { width: 11.31%; text-align: right; }
+  .c-per { width: 4.69%; text-align: center; }
+  .c-amt { width: 16.92%; text-align: right; font-weight: bold; }
+
+  .item-name { font-weight: bold; }
+  .due-date { font-style: italic; }
+  .rate-row .c-qty { font-weight: normal; }
+  .rate-row td { padding-top: 0; }
+  .tax-row .tax-name { text-align: right; font-weight: bold; font-style: italic; padding-right: 8px; }
+  .tax-row .c-amt { font-weight: bold; }
+  .spacer-row td { height: 46px; }
+  .total-row td { border-top: 1px solid #000; padding-top: 4px; padding-bottom: 4px; font-weight: bold; }
+  .total-row .total-label { text-align: right; }
+  .total-row .c-amt { font-size: 9.6pt; }
+
+  table.foot { width: 100%; border-collapse: collapse; border-top: 1px solid #000; }
+  table.foot td { border: none; vertical-align: top; }
+
+  .words-cell { padding: 5px 7px 10px; font-size: 8.6pt; }
+  .words-hdr { font-size: 7.7pt; color: #1a1a1a; }
+  .eoe { float: right; font-style: italic; font-weight: normal; font-size: 8pt; }
+  .words-val { display: block; font-weight: bold; font-size: 9.6pt; margin-top: 2px; }
+
+ .pan-decl-cell {
+  width: 47.7%;
+  border-right: 1px solid #000;
+  padding: 230px 7px 8px !important;
+  font-size: 8pt;
+  line-height: 1.4;
+}
+  .pan-row { display: table; width: 235px; font-weight: normal; margin-bottom: 10px; }
+  .pan-row span:first-child { display: table-cell; }
+  .pan-row span:last-child { display: table-cell; text-align: right; }
+  .decl-title { font-weight: normal; text-decoration: underline; margin-bottom: 2px; }
+  .decl-text { font-size: 7.7pt; line-height: 1.32; }
+
+  .bank-sig-cell { width: 52.3%; padding: 0 !important; position: relative; }
+  .bank-box { padding: 145px 8px 10px; }
+  .bank-title { font-weight: normal; margin-bottom: 4px; font-size: 8.4pt; }
+  .bank-meta { width: 100%; font-size: 8.2pt; border-collapse: collapse; line-height: 1.42; }
+  .bank-meta td { border: none; padding: 0; }
+  .bank-meta .k { width: 105px; font-weight: normal; }
+  .bank-meta .v { font-weight: bold; }
+.sig-box {
+  position: relative;
+  border-top: 1px solid #000;
+  border-left: 1px solid #000;
+  padding: 7px 8px 8px;
+  
+  /* IMPORTANT */
+  margin-right: 0;
+  margin-bottom: 0;
+}
+
+/* Extend ONLY the left vertical line down to the
+   bottom horizontal line of the parent section */
+.sig-box::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 0;
+  width: 1px;
+  height: calc(100%);
+  background: #000;
+}
+
+/* Both texts use the SAME right edge */
+.sig-for {
+  text-align: right;
+  font-weight: bold;
+  font-size: 8.6pt;
+  padding-right: 8px;
+  white-space: nowrap;
+}
+
+.sig-auth {
+  text-align: right;
+  font-weight: normal;
+  font-size: 8.6pt;
+  margin-top: 15px;
+  padding-right: 8px;
+  white-space: nowrap;
+}
+
+  .bottom-tag {
+    text-align: center;
+    font-size: 7.7pt;
+    padding: 3px 0;
+    border-top: 1px solid #000;
+  }
