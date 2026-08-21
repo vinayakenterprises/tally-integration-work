@@ -11,7 +11,7 @@ const FormData = require('form-data');
 // ============================================================
 // CONFIGURATION RESOLVED FROM TALLY
 // ============================================================
-const TALLY_URL = 'http://103.218.127.45:9000/';
+const TALLY_URL = process.env.TALLY_URL || 'http://103.218.127.45:9000/';
 const tallyUrlObj = new URL(TALLY_URL);
 
 const COMPANY_NAME_FILTER = 'VINAYAK ENTERPRISES';
@@ -23,19 +23,9 @@ const SCHEDULE_END_HOUR = parseInt(process.env.SCHEDULE_END_HOUR || '18', 10);
 const SCHEDULE_END_MIN = parseInt(process.env.SCHEDULE_END_MIN || '30', 10);
 const SCHEDULE_INTERVAL_MS = parseInt(process.env.SCHEDULE_INTERVAL_MS || String(1 * 60 * 1000), 10);
 
-// Where the "last known good" JSON snapshot is stored
-const STATE_DIR = path.join(__dirname, 'tally-sync-state');
-if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
-
-// Where exported PDFs are permanently saved
-const PDF_DIR = path.join(__dirname, '..', 'pdfs');
-if (!fs.existsSync(PDF_DIR)) fs.mkdirSync(PDF_DIR, { recursive: true });
-
-
-
-function stateFilePath(type, dateStr) {
-  return path.join(STATE_DIR, `last-sync-${type}-${dateStr}.json`);
-}
+const { STATE_DIR, hashJson, loadLastSnapshot, saveSnapshot, saveOutgoingJson } = require('./utils/syncState.cjs');
+const { PDF_DIR, generatePdfFromHtml } = require('./utils/pdfGenerator.cjs');
+const { GST_STATE_CODES, getStateFromGstin, getCompanyFYSuffix, escapeXml } = require('./utils/formatters.cjs');
 
 // ============================================================
 // TALLY XML TEMPLATES
@@ -170,19 +160,6 @@ const SALES_ORDERS_XML = `
 // ============================================================
 // UTILITY METHODS
 // ============================================================
-function escapeXml(unsafe) {
-  if (!unsafe) return '';
-  return unsafe.replace(/[<>&'"]/g, (c) => {
-    switch (c) {
-      case '<': return '&lt;';
-      case '>': return '&gt;';
-      case '&': return '&amp;';
-      case '\'': return '&apos;';
-      case '"': return '&quot;';
-      default: return c;
-    }
-  });
-}
 
 function wrapText(value, maxChars) {
   const words = String(value || '').trim().split(/\s+/).filter(Boolean);
@@ -403,25 +380,27 @@ function parseVouchers(xmlText) {
       }
     }
 
-    vouchers.push({
-      date,
-      guid,
-      partyledgername,
-      inventoryEntries,
-      ledgerEntries,
-      vouchernumber,
-      partygstin,
-      buyername,
-      buyeraddress,
-      consigneename,
-      consigneeaddress,
-      consigneegstin,
-      shippedby,
-      destination,
-      paymentterms,
-      shipdocno,
-      ledgeraddress
-    });
+    if (guid || vouchernumber) {
+      vouchers.push({
+        date,
+        guid,
+        partyledgername,
+        inventoryEntries,
+        ledgerEntries,
+        vouchernumber,
+        partygstin,
+        buyername,
+        buyeraddress,
+        consigneename,
+        consigneeaddress,
+        consigneegstin,
+        shippedby,
+        destination,
+        paymentterms,
+        shipdocno,
+        ledgeraddress
+      });
+    }
   }
 
   return vouchers;
@@ -658,34 +637,6 @@ function getEffectiveQueryDate() {
   return `${yyyy}${mm}${dd}`;
 }
 
-function hashJson(obj) {
-  const str = JSON.stringify(obj);
-  return crypto.createHash('sha256').update(str).digest('hex');
-}
-
-function loadLastSnapshot(type, dateStr) {
-  const file = stateFilePath(type, dateStr);
-  if (!fs.existsSync(file)) return null;
-  try {
-    const raw = fs.readFileSync(file, 'utf8');
-    return JSON.parse(raw);
-  } catch (err) {
-    console.warn(`[State] Could not read previous snapshot for ${type} on ${dateStr}: ${err.message}`);
-    return null;
-  }
-}
-
-function saveSnapshot(type, dateStr, hash, data) {
-  const file = stateFilePath(type, dateStr);
-  const payload = { hash, savedAt: new Date().toISOString(), data };
-  fs.writeFileSync(file, JSON.stringify(payload, null, 2), 'utf8');
-}
-
-function saveOutgoingJson(type, dateStr, data) {
-  const file = path.join(STATE_DIR, `outgoing-${type}-${dateStr}.json`);
-  fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
-  return file;
-}
 
 function postJson(urlStr, jsonBody) {
   return new Promise((resolve, reject) => {
@@ -885,39 +836,7 @@ function formatTallyDate(dateStr) {
   return `${dd}-${monthName}-${shortYear}`;
 }
 
-const GST_STATE_CODES = {
-  '01': 'Jammu & Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh',
-  '05': 'Uttarakhand', '06': 'Haryana', '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh',
-  '10': 'Bihar', '11': 'Sikkim', '12': 'Arunachal Pradesh', '13': 'Nagaland', '14': 'Manipur',
-  '15': 'Mizoram', '16': 'Tripura', '17': 'Meghalaya', '18': 'Assam', '19': 'West Bengal',
-  '20': 'Jharkhand', '21': 'Odisha', '22': 'Chhattisgarh', '23': 'Madhya Pradesh', '24': 'Gujarat',
-  '26': 'Dadra & Nagar Haveli and Daman & Diu', '27': 'Maharashtra', '29': 'Karnataka', '30': 'Goa',
-  '31': 'Lakshadweep', '32': 'Kerala', '33': 'Tamil Nadu', '34': 'Puducherry', '35': 'Andaman & Nicobar Islands',
-  '36': 'Telangana', '37': 'Andhra Pradesh', '38': 'Ladakh'
-};
 
-function getStateFromGstin(gstin) {
-  if (!gstin || gstin.length < 2) return { name: '', code: '' };
-  const code = gstin.substring(0, 2);
-  const name = GST_STATE_CODES[code] || '';
-  return { name, code };
-}
-
-function getCompanyFYSuffix(dateStr) {
-  let year = new Date().getFullYear();
-  let month = new Date().getMonth();
-  if (dateStr && dateStr.length === 8) {
-    year = parseInt(dateStr.substring(0, 4), 10);
-    month = parseInt(dateStr.substring(4, 6), 10) - 1;
-  }
-  let currentFYStart = year;
-  if (month < 3) {
-    currentFYStart = year - 1;
-  }
-  const currentShort = `${String(currentFYStart).slice(-2)}-${String(currentFYStart + 1).slice(-2)}`;
-  const prevShort = `${String(currentFYStart - 1).slice(-2)}-${String(currentFYStart).slice(-2)}`;
-  return `-(${prevShort})-(${currentShort})`;
-}
 
 async function exportSalesOrderAsPdf(voucher, companyObj, bankObj) {
   const companyName = typeof companyObj === 'string' ? companyObj : (companyObj?.name || 'UNKNOWN');
@@ -1136,33 +1055,17 @@ async function exportSalesOrderAsPdf(voucher, companyObj, bankObj) {
     return templateVars[p1] !== undefined ? templateVars[p1] : '';
   });
 
-  const tempHtmlPath = path.join(STATE_DIR, 'temp-' + voucher.guid + '.html');
-  fs.writeFileSync(tempHtmlPath, htmlContent, 'utf8');
 
   const sanitizedOrderNo = (voucher.vouchernumber || voucher.guid).replace(/[^a-zA-Z0-9-_]/g, '_').trim();
   const finalPdfPath = path.join(PDF_DIR, sanitizedOrderNo + '.pdf');
 
-  try {
-    execFileSync(BROWSER_PATH, [
-      "--headless",
-      "--no-sandbox",
-      "--disable-gpu",
-      "--print-to-pdf=" + finalPdfPath,
-      "--print-to-pdf-no-header",
-      "--no-margins",
-      tempHtmlPath
-    ]);
+  const success = generatePdfFromHtml(htmlContent, finalPdfPath);
+  if (success) {
     console.log('   PDF successfully generated.');
     return finalPdfPath;
-  } catch (err) {
-    console.error('   [PDF Export Exception]', err.message);
+  } else {
+    console.error('   [PDF Export Exception]');
     return null;
-  } finally {
-    try {
-      if (fs.existsSync(tempHtmlPath)) fs.unlinkSync(tempHtmlPath);
-    } catch (e) {
-      // Ignore
-    }
   }
 }
 

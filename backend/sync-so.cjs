@@ -8,10 +8,6 @@ const {
   flattenVouchers,
   fetchFromTallyWithRetry,
   getEffectiveQueryDate,
-  hashJson,
-  loadLastSnapshot,
-  saveSnapshot,
-  saveOutgoingJson,
   postMultipartData,
   isWithinScheduleWindow,
   getTallySelectedCompany,
@@ -23,10 +19,17 @@ const {
   SCHEDULE_END_MIN
 } = require('./tallyCore.cjs');
 
+const {
+  hashJson,
+  loadLastSnapshot,
+  saveSnapshot,
+  saveOutgoingJson
+} = require('./utils/syncState.cjs');
+
 // ============================================================
 // CONFIGURATION
 // ============================================================
-const PUSH_API_URL = 'https://api.mittalu.com/api/v1/o2d/so-orders-from-tally';
+const PUSH_API_URL = `${process.env.API_BASE_URL_PROD || 'https://api.mittalu.com'}/api/v1/o2d/so-orders-from-tally`;
 const TYPE = 'so';
 
 /**

@@ -7,7 +7,11 @@ const {
   TALLY_URL
 } = require('./tallyCore.cjs');
 
-const { syncAndPushSO, startSchedulerSO } = require('./sync-so.cjs');
+const { syncAndPushSO } = require('./sync-so.cjs');
+const { syncAndPushSales } = require('./sync-sales.cjs');
+const { syncAndPushCreditNotes } = require('./sync-credit-note.cjs');
+const { syncAndPushDebitNotes } = require('./sync-debit-note.cjs');
+const { SCHEDULE_INTERVAL_MS, sleep } = require('./tallyCore.cjs');
 
 // ============================================================
 // HTTP ENDPOINTS
@@ -89,6 +93,34 @@ app.listen(PORT, () => {
   console.log(`\n🚀 Backend Express Coordinator running on port ${PORT}`);
   console.log(`🔗 Manual fetch SO: http://localhost:${PORT}/fetch/so?date=${formattedToday}`);
 
-  // Launch all individual schedulers in parallel
-  startSchedulerSO();
+  // Master Orchestrator Loop
+  async function runMasterOrchestrator() {
+    console.log('\n[Master Orchestrator] Starting integration cycle...');
+    while (true) {
+      const today = getEffectiveQueryDate();
+      console.log(`\n--- [Master Orchestrator] Cycle started for date: ${today} ---`);
+      
+      try {
+        console.log('[Master] Running Sales Order Sync...');
+        await syncAndPushSO(today);
+        
+        console.log('[Master] Running Sales Invoice Sync...');
+        await syncAndPushSales(today);
+        
+        console.log('[Master] Running Credit Note Sync...');
+        await syncAndPushCreditNotes(today);
+        
+        console.log('[Master] Running Debit Note Sync...');
+        await syncAndPushDebitNotes(today);
+      } catch (err) {
+        console.error('[Master Orchestrator] Error during cycle:', err);
+      }
+      
+      console.log(`\n--- [Master Orchestrator] Cycle complete. Waiting for ${SCHEDULE_INTERVAL_MS / 60000} minutes... ---`);
+      await sleep(SCHEDULE_INTERVAL_MS);
+    }
+  }
+
+  // Launch the master loop
+  runMasterOrchestrator();
 });
